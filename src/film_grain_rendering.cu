@@ -393,6 +393,8 @@ __global__ void kernel( float *out_im, size_t out_w, size_t out_h,
 						else
 							currGrainRadiusSq = grainRadiusSq;
 
+						// TODO modify test distance to include mapping function
+						
 						// test distance
 						if(sqDistance(xCentreGrain, yCentreGrain, xGaussian, yGaussian) < currGrainRadiusSq)
 						{
