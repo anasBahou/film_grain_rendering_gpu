@@ -11,6 +11,8 @@ texture <float,1,cudaReadModeElementType> tex_exp_lambda_list;
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess ) {printf(" Error at %s :% d \n" , __FILE__ , __LINE__ ); printf(" Error type : %s\n",cudaGetErrorString(x));return(NULL);}} while (0)
 
+#define DEBUG true
+
 /**
  * This functions interlace_rgb_image takes an deinterlaced rgb image im and transforms it into an interlaced rgb image.
  * 
@@ -248,7 +250,25 @@ __device__ unsigned int my_rand_poisson(unsigned int *prngstate, float lambda, f
 */
 __device__ float sqDistance(const float x1, const float y1, const float x2, const float y2)
 {
-	return((x1-x2)*(x1-x2) + (y1-y2)*(y1-y2));
+/*     // defining a modulated sinwave function to calculate Phi(xGaussian, yGaussian) 
+
+    float amplitude_def=.5;
+    float period_min=5;
+    float period_max=50;
+    float phi_x2 = x2 + amplitude_def*cos(2*pi*(x2-50)/((period_max-period_min)*y2/500+period_min));
+    // y2 = y2 + amplitude_def/2*cos(2*pi*y2/500);
+    // return((x1-phi_x2)*(x1-phi_x2) + (y1-y2)*(y1-y2));
+    /////////////////////////////////////////////////////////////////// */
+    return((x1-x2)*(x1-x2) + (y1-y2)*(y1-y2));
+}
+
+__device__ float mapping_fun(float x, float y){
+    // defining a modulated sinwave function to calculate Phi(xGaussian, yGaussian) 
+    float amplitude_def=.5;
+    float period_min=5;
+    float period_max=50;
+    return (float)(x + amplitude_def*cos(2*pi*(x-50)/(float)((period_max-period_min)*y/500+period_min)));
+    // y = y + amplitude_def/2*cos(2*pi*y/500);
 }
 
 /**
@@ -323,7 +343,9 @@ __global__ void kernel( float *out_im, size_t out_w, size_t out_h,
 			float yGaussian = myrand_gaussian_0_1(&pMonteCarlo);
 
 			xGaussian = x + sigmaFilter*(xGaussian)/sX;
-			yGaussian = y + sigmaFilter*(yGaussian)/sY;
+            yGaussian = y + sigmaFilter*(yGaussian)/sY;
+            
+            //xGaussian = mapping_fun(xGaussian, yGaussian);
 
 			// Compute the Poisson parameters for the pixel that contains (x,y)
 			/*float4 src_im_sxsy = tex2D(tex_src_im, (int)max(floor(xGaussian),0.0), (int)max(floor(yGaussian),0.0));
@@ -335,7 +357,13 @@ __global__ void kernel( float *out_im, size_t out_w, size_t out_h,
 			int minX = floor( (xGaussian - maxRadius)/ag);
 			int maxX = floor( (xGaussian + maxRadius)/ag);
 			int minY = floor( (yGaussian - maxRadius)/ag);
-			int maxY = floor( (yGaussian + maxRadius)/ag);
+            int maxY = floor( (yGaussian + maxRadius)/ag);
+            
+            if (DEBUG) {
+                if ((threadIdx.x==0)&&(threadIdx.y==0)){
+                    printf("minX = %d\nmaxX = %d\nminY = %d\nmaxY = %d\n", minX, maxX, minY, maxY);
+                }
+            }
 
 			bool ptCovered = false; // used to break all for loops
 
@@ -359,7 +387,13 @@ __global__ void kernel( float *out_im, size_t out_w, size_t out_h,
 					u = src_im_sxsy.x;
 					int uInd = (int)floor( u*( (float)MAX_GREY_LEVEL + (float)EPSILON_GREY_LEVEL) );
 					float currLambda = tex1D(tex_lambda_list,uInd);
-					float currExpLambda = tex1D(tex_exp_lambda_list,uInd);
+                    float currExpLambda = tex1D(tex_exp_lambda_list,uInd);
+                    
+                    if (DEBUG) {
+                        if ((threadIdx.x==0)&&(threadIdx.y==0)){
+                            printf("uInd = %d\n", uInd);
+                        }
+                    }
 
 					/*float currLambda = lambda;
 					float currExpLambda = exp(-lambda);
@@ -393,8 +427,8 @@ __global__ void kernel( float *out_im, size_t out_w, size_t out_h,
 						else
 							currGrainRadiusSq = grainRadiusSq;
 
-						// TODO modify test distance to include mapping function
-						
+                        //xGaussian = mapping_fun(xGaussian, yGaussian);
+
 						// test distance
 						if(sqDistance(xCentreGrain, yCentreGrain, xGaussian, yGaussian) < currGrainRadiusSq)
 						{
